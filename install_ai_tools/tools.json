@@ -1,0 +1,152 @@
+{
+  "claude_code": {
+    "name": "Claude Code",
+    "cmd": "claude",
+    "installation": {
+      "macos": [
+        {
+          "cmd": "curl -fsSL https://claude.ai/install.sh | bash",
+          "recommended": true
+        },
+        {
+          "cmd": "brew install --cask claude-code",
+          "note": "更新较慢"
+        },
+        {
+          "cmd": "npm install -g @anthropic-ai/claude-code",
+          "deprecated": true
+        }
+      ],
+      "linux": [
+        {
+          "cmd": "curl -fsSL https://claude.ai/install.sh | bash",
+          "recommended": true
+        },
+        {
+          "cmd": "npm install -g @anthropic-ai/claude-code",
+          "deprecated": true
+        }
+      ],
+      "windows": [
+        {
+          "cmd": "irm https://claude.ai/install.ps1 | iex",
+          "recommended": true
+        },
+        {
+          "cmd": "winget install Anthropic.ClaudeCode"
+        },
+        {
+          "cmd": "npm install -g @anthropic-ai/claude-code",
+          "deprecated": true
+        }
+      ]
+    }
+  },
+  "codex": {
+    "name": "Codex",
+    "cmd": "codex",
+    "installation": {
+      "macos": [
+        {
+          "cmd": "curl -fsSL https://chatgpt.com/codex/install.sh | sh",
+          "recommended": true
+        },
+        {
+          "cmd": "brew install --cask codex"
+        },
+        {
+          "cmd": "npm install -g @openai/codex"
+        }
+      ],
+      "linux": [
+        {
+          "cmd": "curl -fsSL https://chatgpt.com/codex/install.sh | sh",
+          "recommended": true
+        },
+        {
+          "cmd": "npm install -g @openai/codex"
+        }
+      ],
+      "windows": [
+        {
+          "cmd": "powershell -ExecutionPolicy ByPass -c \"irm https://chatgpt.com/codex/install.ps1 | iex\"",
+          "recommended": true
+        },
+        {
+          "cmd": "npm install -g @openai/codex"
+        }
+      ]
+    }
+  },
+  "opencode": {
+    "name": "OpenCode",
+    "cmd": "opencode",
+    "installation": {
+      "macos": [
+        {
+          "cmd": "curl -fsSL https://opencode.ai/install | bash",
+          "recommended": true
+        },
+        {
+          "cmd": "brew install anomalyco/tap/opencode",
+          "recommended": true,
+          "note": "始终最新"
+        },
+        {
+          "cmd": "brew install opencode",
+          "note": "更新较慢"
+        },
+        {
+          "cmd": "npm i -g opencode-ai@latest"
+        }
+      ],
+      "linux": [
+        {
+          "cmd": "curl -fsSL https://opencode.ai/install | bash",
+          "recommended": true
+        },
+        {
+          "cmd": "npm i -g opencode-ai@latest"
+        }
+      ],
+      "windows": [
+        {
+          "cmd": "scoop install opencode"
+        },
+        {
+          "cmd": "choco install opencode"
+        },
+        {
+          "cmd": "npm i -g opencode-ai@latest"
+        }
+      ]
+    }
+  },
+  "hermes": {
+    "name": "Hermes",
+    "cmd": "hermes",
+    "installation": {
+      "macos": [
+        {
+          "cmd": "curl -fsSL https://hermes-agent.nousresearch.com/install.sh | bash",
+          "recommended": true
+        },
+        {
+          "cmd": "brew install hermes-agent"
+        }
+      ],
+      "linux": [
+        {
+          "cmd": "curl -fsSL https://hermes-agent.nousresearch.com/install.sh | bash",
+          "recommended": true
+        }
+      ],
+      "windows": [
+        {
+          "cmd": "iex (irm https://hermes-agent.nousresearch.com/install.ps1)",
+          "recommended": true
+        }
+      ]
+    }
+  }
+}

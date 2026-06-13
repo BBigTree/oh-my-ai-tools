@@ -1,10 +1,14 @@
 #!/bin/bash
 
 # ============================================================
-# AI 编程助手安装脚本 — 主入口
-# 自动检测平台，调用对应平台脚本
+# AI 编程助手安装脚本 (配置驱动)
+# 工具列表和安装命令从 tools.json 读取
 # ============================================================
 # 注意: 不使用 set -e，本脚本为交互式，每个步骤自行处理错误
+
+# ---------- 脚本所在目录 / 配置文件 ----------
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+CONFIG_FILE="${SCRIPT_DIR}/tools.json"
 
 # ---------- 颜色定义 ----------
 GREEN='\033[0;32m'
@@ -12,10 +16,8 @@ YELLOW='\033[0;33m'
 RED='\033[0;31m'
 CYAN='\033[0;36m'
 BOLD='\033[1m'
+MUTED='\033[0;2m'
 NC='\033[0m'
-
-# ---------- 脚本所在目录 ----------
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
 # ---------- 代理配置 ----------
 PROXY_HOST="127.0.0.1"
@@ -24,8 +26,88 @@ HTTP_PROXY_URL="http://${PROXY_HOST}:${PROXY_PORT}"
 SOCKS5_PROXY_URL="socks5://${PROXY_HOST}:${PROXY_PORT}"
 USE_PROXY=false
 
-# ---------- 工具列表 ----------
-TOOLS=("claude" "codex" "opencode" "hermes")
+# ---------- 检查配置文件 ----------
+if [ ! -f "${CONFIG_FILE}" ]; then
+    echo -e "${RED}[✗] 找不到配置文件: ${CONFIG_FILE}${NC}"
+    exit 1
+fi
+
+# ---------- JSON 查询函数 ----------
+# 获取工具列表 (输出: key|name 每行一个)
+get_tools() {
+    python3 -c "
+import json
+with open('${CONFIG_FILE}') as f:
+    data = json.load(f)
+for key, val in data.items():
+    name = val.get('name', key)
+    cmd = val.get('cmd', key)
+    print(f'{key}|{name}|{cmd}')
+"
+}
+
+# 获取工具的命令名 (用于版本检查)
+get_tool_cmd() {
+    python3 -c "
+import json
+with open('${CONFIG_FILE}') as f:
+    data = json.load(f)
+print(data['${1}'].get('cmd', '${1}'))
+"
+}
+
+# ---------- 检测当前系统 ----------
+detect_system() {
+    local os
+    os="$(uname -s)"
+    case "${os}" in
+        Darwin)               SYSTEM="macos" ;;
+        Linux)                SYSTEM="linux" ;;
+        MINGW*|MSYS*|CYGWIN*) SYSTEM="windows" ;;
+        *)                    SYSTEM="linux" ;;
+    esac
+}
+
+# ---------- 显示系统信息 ----------
+show_system_info() {
+    local os arch
+    os="$(uname -s)"
+    arch="$(uname -m)"
+    case "${os}" in
+        Darwin) os="macOS" ;;
+        Linux)
+            if [ -f /etc/os-release ]; then
+                # shellcheck disable=SC1091
+                . /etc/os-release
+                os="${PRETTY_NAME:-Linux}"
+            fi
+            ;;
+        MINGW*|MSYS*|CYGWIN*) os="Windows" ;;
+    esac
+    echo -e "${CYAN}[*] 系统信息${NC} ${MUTED}${os} / ${arch}${NC}"
+}
+
+# ---------- 获取已安装工具的版本 ----------
+get_version() {
+    local cmd="$1"
+    "${cmd}" --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1
+}
+
+# 获取工具在指定系统的安装方式列表 (输出: cmd<TAB>recommended<TAB>deprecated<TAB>note 每行一个)
+# 参数: $1 = 工具key, $2 = 系统(macos/linux/windows)
+get_methods() {
+    python3 -c "
+import json
+with open('${CONFIG_FILE}') as f:
+    data = json.load(f)
+for m in data['${1}']['installation'].get('${2}', []):
+    cmd = m['cmd']
+    rec = '1' if m.get('recommended') else '0'
+    dep = '1' if m.get('deprecated') else '0'
+    note = m.get('note', '')
+    print(f'{cmd}\t{rec}\t{dep}\t{note}')
+"
+}
 
 # ---------- 询问用户是否使用代理 ----------
 ask_proxy() {
@@ -99,65 +181,113 @@ cleanup_proxy() {
     fi
 }
 
-# ---------- 检测平台 ----------
-detect_platform() {
-    local os arch
-    os="$(uname -s | tr '[:upper:]' '[:lower:]')"
-    arch="$(uname -m)"
-
-    case "${os}" in
-        darwin)
-            PLATFORM="macos"
-            ;;
-        linux)
-            PLATFORM="linux"
-            ;;
-        *)
-            echo -e "${RED}[✗] 不支持的操作系统: ${os}${NC}"
-            exit 1
-            ;;
-    esac
-
-    case "${arch}" in
-        x86_64|amd64)
-            ARCH="x64"
-            ;;
-        arm64|aarch64)
-            ARCH="arm64"
-            ;;
-        *)
-            echo -e "${RED}[✗] 不支持的架构: ${arch}${NC}"
-            exit 1
-            ;;
-    esac
-
-    echo -e "${GREEN}[✓] 检测到平台: ${PLATFORM} (${ARCH})${NC}"
-}
-
-# ---------- 选择要安装的工具 ----------
-select_tools() {
+# ---------- 选择工具 ----------
+select_tool() {
     echo ""
     echo -e "${CYAN}[*] 请选择要安装的工具:${NC}"
-    echo -e "    ${YELLOW}1)${NC} Claude Code  — Anthropic AI 编程助手"
-    echo -e "    ${YELLOW}2)${NC} Codex        — OpenAI AI 编程助手"
-    echo -e "    ${YELLOW}3)${NC} OpenCode      — 开源 AI 编程助手"
-    echo -e "    ${YELLOW}4)${NC} Hermes        — AI 编程助手"
-    echo -e "    ${YELLOW}a)${NC} 全部安装"
+
+    TOOL_KEYS=()
+    TOOL_NAMES=()
+    local i=1
+    while IFS='|' read -r key name cmd; do
+        TOOL_KEYS+=("${key}")
+        TOOL_NAMES+=("${name}")
+        local ver
+        ver=$(get_version "${cmd}")
+        if [ -n "${ver}" ]; then
+            echo -e "    ${YELLOW}${i})${NC} ${name} ${GREEN}${ver}${NC}"
+        else
+            echo -e "    ${YELLOW}${i})${NC} ${name} ${MUTED}未安装${NC}"
+        fi
+        i=$((i + 1))
+    done < <(get_tools)
     echo -e "    ${YELLOW}q)${NC} 退出"
-    echo -ne "    请选择 [1/2/3/4/a/q]: "
+    echo -ne "    请选择: "
     read -r choice
 
-    SELECTED_TOOLS=()
+    if [ "${choice}" = "q" ] || [ "${choice}" = "Q" ]; then
+        echo -e "${CYAN}[*] 退出${NC}"
+        cleanup_proxy
+        exit 0
+    fi
 
-    case "${choice}" in
-        1)   SELECTED_TOOLS=("claude") ;;
-        2)   SELECTED_TOOLS=("codex") ;;
-        3)   SELECTED_TOOLS=("opencode") ;;
-        4)   SELECTED_TOOLS=("hermes") ;;
-        a|A) SELECTED_TOOLS=("${TOOLS[@]}") ;;
-        q|Q) echo -e "${CYAN}[*] 退出${NC}"; exit 0 ;;
-        *)   echo -e "${YELLOW}[!] 无效选择，安装全部${NC}"; SELECTED_TOOLS=("${TOOLS[@]}") ;;
-    esac
+    if ! [[ "${choice}" =~ ^[0-9]+$ ]] || [ "${choice}" -lt 1 ] || [ "${choice}" -gt ${#TOOL_KEYS[@]} ]; then
+        echo -e "${RED}[✗] 无效选择${NC}"
+        cleanup_proxy
+        exit 1
+    fi
+
+    SELECTED_KEY="${TOOL_KEYS[$((choice - 1))]}"
+    SELECTED_NAME="${TOOL_NAMES[$((choice - 1))]}"
+}
+
+# ---------- 选择安装方式 ----------
+select_method() {
+    local tool_key="$1"
+    local tool_name="$2"
+
+    echo ""
+    echo -e "${CYAN}[*] 请选择 ${tool_name} 的安装方式:${NC}"
+
+    METHOD_CMDS=()
+    local j=1
+    while IFS=$'\t' read -r cmd rec dep note; do
+        METHOD_CMDS+=("${cmd}")
+        local label=""
+        if [ "${rec}" = "1" ]; then
+            label="${label} ${GREEN}[推荐]${NC}"
+        fi
+        if [ "${dep}" = "1" ]; then
+            label="${label} ${YELLOW}[已废弃]${NC}"
+        fi
+        echo -e "    ${YELLOW}${j})${NC} ${cmd}${label}"
+        if [ -n "${note}" ]; then
+            echo -e "       ${MUTED}↳ ${note}${NC}"
+        fi
+        j=$((j + 1))
+    done < <(get_methods "${tool_key}" "${SYSTEM}")
+
+    if [ ${#METHOD_CMDS[@]} -eq 0 ]; then
+        echo -e "${YELLOW}[!] 当前系统 (${SYSTEM}) 暂无可用的安装方式${NC}"
+        cleanup_proxy
+        exit 0
+    fi
+
+    echo -ne "    请选择: "
+    read -r mchoice
+
+    if ! [[ "${mchoice}" =~ ^[0-9]+$ ]] || [ "${mchoice}" -lt 1 ] || [ "${mchoice}" -gt ${#METHOD_CMDS[@]} ]; then
+        echo -e "${RED}[✗] 无效选择${NC}"
+        cleanup_proxy
+        exit 1
+    fi
+
+    SELECTED_CMD="${METHOD_CMDS[$((mchoice - 1))]}"
+}
+
+# ---------- 执行安装 ----------
+do_install() {
+    local name="$1"
+    local cmd="$2"
+    local install_cmd="$3"
+
+    echo ""
+    echo -e "${CYAN}----------------------------------------${NC}"
+    echo -e "${CYAN}[→] 安装 ${name}${NC}"
+    echo -e "    ${MUTED}${install_cmd}${NC}"
+    echo ""
+
+    if eval "${install_cmd}"; then
+        echo ""
+        if command -v "${cmd}" &> /dev/null; then
+            echo -e "${GREEN}[✓] ${name} 安装成功: $(${cmd} --version 2>/dev/null | head -1)${NC}"
+        else
+            echo -e "${GREEN}[✓] ${name} 安装命令已执行，请重新打开终端或检查 PATH${NC}"
+        fi
+    else
+        echo ""
+        echo -e "${RED}[✗] ${name} 安装失败${NC}"
+    fi
 }
 
 # ---------- 主流程 ----------
@@ -168,72 +298,46 @@ main() {
     echo -e "${CYAN}========================================${NC}"
     echo ""
 
-    # 1. 检测平台
-    detect_platform
+    # 0. 检测系统 + 显示系统信息
+    detect_system
+    show_system_info
 
-    # 2. 询问代理
+    # 1. 询问代理
     if ask_proxy; then
         if check_proxy; then
             setup_proxy
             USE_PROXY=true
         fi
     fi
-    echo ""
 
-    # 3. 选择工具
-    select_tools
+    # 2. 选择工具
+    select_tool
 
-    # 4. 加载平台脚本并执行
-    PLATFORM_SCRIPT="${SCRIPT_DIR}/install_${PLATFORM}.sh"
-    if [ ! -f "${PLATFORM_SCRIPT}" ]; then
-        echo -e "${RED}[✗] 找不到平台脚本: ${PLATFORM_SCRIPT}${NC}"
-        exit 1
+    # 3. 获取工具命令名
+    TOOL_CMD=$(get_tool_cmd "${SELECTED_KEY}")
+
+    # 4. 检查是否已安装
+    if command -v "${TOOL_CMD}" &> /dev/null; then
+        echo ""
+        echo -e "${GREEN}[✓] ${SELECTED_NAME} 已安装: $(${TOOL_CMD} --version 2>/dev/null | head -1)${NC}"
+        echo -ne "    是否重新安装？ [y/n]: "
+        read -r reinstall
+        if [ "${reinstall}" != "y" ] && [ "${reinstall}" != "Y" ]; then
+            echo ""
+            cleanup_proxy
+            exit 0
+        fi
     fi
 
-    # 导出变量给子脚本使用
-    export HTTP_PROXY_URL SOCKS5_PROXY_URL USE_PROXY ARCH
-    export GREEN YELLOW RED CYAN BOLD NC
+    # 5. 选择安装方式
+    select_method "${SELECTED_KEY}" "${SELECTED_NAME}"
 
-    # shellcheck source=install_macos.sh
-    source "${PLATFORM_SCRIPT}"
-
-    # 5. 检查前置依赖
-    echo ""
-    echo -e "${CYAN}----------------------------------------${NC}"
-    "check_prerequisites_${PLATFORM}" || true
-
-    # 6. 逐个安装
-    echo ""
-    for tool in "${SELECTED_TOOLS[@]}"; do
-        echo -e "${CYAN}----------------------------------------${NC}"
-        case "${tool}" in
-            claude)   install_claude   ;;
-            codex)    install_codex    ;;
-            opencode) install_opencode ;;
-            hermes)   install_hermes   ;;
-        esac
-    done
+    # 6. 执行安装
+    do_install "${SELECTED_NAME}" "${TOOL_CMD}" "${SELECTED_CMD}"
 
     # 7. 清理
     echo ""
     cleanup_proxy
-
-    # 8. 验证
-    echo ""
-    echo -e "${CYAN}========================================${NC}"
-    echo -e "${BOLD}   安装验证${NC}"
-    echo -e "${CYAN}========================================${NC}"
-
-    for tool in "${SELECTED_TOOLS[@]}"; do
-        if command -v "${tool}" &> /dev/null; then
-            local_ver=$(${tool} --version 2>/dev/null | head -1)
-            echo -e "   ${GREEN}[✓] ${tool} — ${local_ver}${NC}"
-        else
-            echo -e "   ${RED}[✗] ${tool} — 安装失败或不在 PATH 中${NC}"
-        fi
-    done
-
-    echo -e "${CYAN}========================================${NC}"
     echo ""
 }
 
