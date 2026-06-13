@@ -26,6 +26,10 @@ HTTP_PROXY_URL="http://${PROXY_HOST}:${PROXY_PORT}"
 SOCKS5_PROXY_URL="socks5://${PROXY_HOST}:${PROXY_PORT}"
 USE_PROXY=false
 
+# ---------- 镜像配置 ----------
+ELECTRON_MIRROR_URL="https://npmmirror.com/mirrors/electron"
+USE_MIRROR=false
+
 # ---------- 检查配置文件 ----------
 if [ ! -f "${CONFIG_FILE}" ]; then
     echo -e "${RED}[✗] 找不到配置文件: ${CONFIG_FILE}${NC}"
@@ -181,6 +185,41 @@ cleanup_proxy() {
     fi
 }
 
+# ---------- 询问是否配置 ELECTRON_MIRROR ----------
+ask_mirror() {
+    echo ""
+    echo -e "${CYAN}[*] 是否配置 ELECTRON_MIRROR？${NC} (${ELECTRON_MIRROR_URL})"
+    echo -e "    ${YELLOW}y)${NC} 配置"
+    echo -e "    ${YELLOW}n)${NC} 不配置"
+    echo -ne "    请选择 [y/n]: "
+    read -r mirror_answer
+
+    case "${mirror_answer}" in
+        y|Y) return 0 ;;
+        *)   return 1 ;;
+    esac
+}
+
+# ---------- 设置 ELECTRON_MIRROR ----------
+setup_mirror() {
+    export ELECTRON_MIRROR="${ELECTRON_MIRROR_URL}"
+    echo -e "${GREEN}[✓] 已设置 ELECTRON_MIRROR: ${ELECTRON_MIRROR}${NC}"
+}
+
+# ---------- 清除 ELECTRON_MIRROR ----------
+cleanup_mirror() {
+    if [ "${USE_MIRROR}" = true ]; then
+        unset ELECTRON_MIRROR
+        echo -e "${CYAN}[*] 已清除 ELECTRON_MIRROR${NC}"
+    fi
+}
+
+# ---------- 清除所有配置 (代理 + 镜像) ----------
+cleanup_all() {
+    cleanup_mirror
+    cleanup_proxy
+}
+
 # ---------- 选择工具 ----------
 select_tool() {
     echo ""
@@ -207,13 +246,13 @@ select_tool() {
 
     if [ "${choice}" = "q" ] || [ "${choice}" = "Q" ]; then
         echo -e "${CYAN}[*] 退出${NC}"
-        cleanup_proxy
+        cleanup_all
         exit 0
     fi
 
     if ! [[ "${choice}" =~ ^[0-9]+$ ]] || [ "${choice}" -lt 1 ] || [ "${choice}" -gt ${#TOOL_KEYS[@]} ]; then
         echo -e "${RED}[✗] 无效选择${NC}"
-        cleanup_proxy
+        cleanup_all
         exit 1
     fi
 
@@ -249,7 +288,7 @@ select_method() {
 
     if [ ${#METHOD_CMDS[@]} -eq 0 ]; then
         echo -e "${YELLOW}[!] 当前系统 (${SYSTEM}) 暂无可用的安装方式${NC}"
-        cleanup_proxy
+        cleanup_all
         exit 0
     fi
 
@@ -258,7 +297,7 @@ select_method() {
 
     if ! [[ "${mchoice}" =~ ^[0-9]+$ ]] || [ "${mchoice}" -lt 1 ] || [ "${mchoice}" -gt ${#METHOD_CMDS[@]} ]; then
         echo -e "${RED}[✗] 无效选择${NC}"
-        cleanup_proxy
+        cleanup_all
         exit 1
     fi
 
@@ -310,13 +349,19 @@ main() {
         fi
     fi
 
-    # 2. 选择工具
+    # 2. 询问 ELECTRON_MIRROR
+    if ask_mirror; then
+        setup_mirror
+        USE_MIRROR=true
+    fi
+
+    # 3. 选择工具
     select_tool
 
-    # 3. 获取工具命令名
+    # 4. 获取工具命令名
     TOOL_CMD=$(get_tool_cmd "${SELECTED_KEY}")
 
-    # 4. 检查是否已安装
+    # 5. 检查是否已安装
     if command -v "${TOOL_CMD}" &> /dev/null; then
         echo ""
         echo -e "${GREEN}[✓] ${SELECTED_NAME} 已安装: $(${TOOL_CMD} --version 2>/dev/null | head -1)${NC}"
@@ -324,20 +369,20 @@ main() {
         read -r reinstall
         if [ "${reinstall}" != "y" ] && [ "${reinstall}" != "Y" ]; then
             echo ""
-            cleanup_proxy
+            cleanup_all
             exit 0
         fi
     fi
 
-    # 5. 选择安装方式
+    # 6. 选择安装方式
     select_method "${SELECTED_KEY}" "${SELECTED_NAME}"
 
-    # 6. 执行安装
+    # 7. 执行安装
     do_install "${SELECTED_NAME}" "${TOOL_CMD}" "${SELECTED_CMD}"
 
-    # 7. 清理
+    # 8. 清理
     echo ""
-    cleanup_proxy
+    cleanup_all
     echo ""
 }
 
