@@ -171,10 +171,10 @@ install_hermes() {
         fi
     fi
 
-    echo -e "${CYAN}    安装方式: npm (全局安装 @anthropic-ai/hermes)${NC}"
-    if npm install -g @anthropic-ai/hermes@latest; then
+    echo -e "${CYAN}    安装方式: 官方安装脚本 (curl)${NC}"
+    if curl -fsSL https://hermes-agent.nousresearch.com/install.sh | bash; then
         echo -e "${GREEN}[✓] Hermes 安装成功: $(hermes --version 2>/dev/null | head -1)${NC}"
     else
-        echo -e "${RED}[✗] Hermes 安装失败，请确认包名是否正确${NC}"
+        echo -e "${RED}[✗] Hermes 安装失败${NC}"
     fi
 }
