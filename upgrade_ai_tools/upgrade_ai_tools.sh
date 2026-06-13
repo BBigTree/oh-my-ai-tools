@@ -13,6 +13,7 @@ YELLOW='\033[0;33m'
 RED='\033[0;31m'
 CYAN='\033[0;36m'
 BOLD='\033[1m'
+MUTED='\033[0;2m'
 NC='\033[0m'
 
 # ---------- 代理配置 ----------
@@ -92,7 +93,6 @@ setup_proxy() {
     export ALL_PROXY="${SOCKS5_PROXY_URL}"
     export no_proxy="localhost,127.0.0.1,::1"
     echo -e "${GREEN}[✓] 已设置代理环境变量${NC}"
-    echo ""
 }
 
 # ---------- 清除代理 ----------
@@ -177,33 +177,6 @@ except:
     echo "${ver}"
 }
 
-# ---------- 查询最新版本 (GitHub 优先, npm 回退) ----------
-# 参数: $1 = GitHub owner/repo, $2 = npm 包名 (可为空)
-get_latest_version() {
-    local repo="$1"
-    local npm_pkg="$2"
-    local ver
-
-    # 1. 优先 GitHub API
-    ver=$(get_github_latest "${repo}")
-    if [ -n "$ver" ]; then
-        echo "${ver}"
-        return
-    fi
-
-    # 2. GitHub 失败，尝试 npm 回退
-    if [ -n "$npm_pkg" ]; then
-        ver=$(get_npm_latest "${npm_pkg}")
-        if [ -n "$ver" ]; then
-            echo "${ver}"
-            return
-        fi
-    fi
-
-    # 3. 都失败，返回空
-    echo ""
-}
-
 # ---------- 升级单个工具 ----------
 upgrade_tool() {
     local name="$1"
@@ -256,6 +229,49 @@ upgrade_tool() {
     fi
 }
 
+# ---------- 打印工具版本行 ----------
+print_ver_row() {
+    local name="$1"
+    local ver="$2"
+    if [ -n "$ver" ]; then
+        printf "    %-15s ${MUTED}%s${NC}\n" "$name" "$ver"
+    else
+        printf "    %-15s ${YELLOW}未安装${NC}\n" "$name"
+    fi
+}
+
+# ---------- 检查并升级单个工具 (封装) ----------
+# 参数: 名称 / 命令 / GitHub仓库 / npm包名(可空) / 升级命令
+check_tool() {
+    local name="$1"
+    local cmd="$2"
+    local repo="$3"
+    local npm_pkg="$4"
+    local upgrade_cmd="$5"
+
+    # 未安装直接跳过
+    if ! command -v "${cmd}" &> /dev/null; then
+        echo -e "${YELLOW}[⊘] ${name} — 未安装，跳过${NC}"
+        NOT_INSTALLED=$((NOT_INSTALLED + 1))
+        return
+    fi
+
+    # 打印检查方式 (GitHub 优先)
+    echo -e "${CYAN}[→] 正在检查 ${name}${NC}"
+    echo -e "    ${MUTED}GitHub: github.com/${repo}${NC}"
+
+    # 查询最新版本: GitHub 优先，失败则 npm 回退
+    local latest
+    latest=$(get_github_latest "${repo}")
+    if [ -z "$latest" ] && [ -n "$npm_pkg" ]; then
+        echo -e "    ${YELLOW}[!] GitHub 查询失败，切换 npm 查询最新版本${NC}"
+        echo -e "    ${MUTED}npm: ${npm_pkg}${NC}"
+        latest=$(get_npm_latest "${npm_pkg}")
+    fi
+
+    upgrade_tool "${name}" "${cmd}" "${latest}" "${upgrade_cmd}"
+}
+
 # ---------- 主流程 ----------
 main() {
     echo ""
@@ -273,49 +289,41 @@ main() {
     fi
     echo ""
 
+    # 2. 显示待检查工具 (工具 / 当前版本)
+    local claude_ver codex_ver opencode_ver hermes_ver
+    claude_ver=$(get_current_version "claude")
+    codex_ver=$(get_current_version "codex")
+    opencode_ver=$(get_current_version "opencode")
+    hermes_ver=$(get_current_version "hermes")
+
+    echo -e "${CYAN}[*] 待检查工具${NC} ${MUTED}(工具 / 当前版本)${NC}"
+    echo ""
+    printf "    ${MUTED}──────────────────────────────────${NC}\n"
+    print_ver_row "Claude Code" "${claude_ver}"
+    print_ver_row "Codex" "${codex_ver}"
+    print_ver_row "OpenCode" "${opencode_ver}"
+    print_ver_row "Hermes" "${hermes_ver}"
+    echo ""
+
     echo -e "${CYAN}----------------------------------------${NC}"
 
     # 3. Claude Code
-    if command -v claude &> /dev/null; then
-        latest=$(get_latest_version "anthropics/claude-code" "@anthropic-ai/claude-code")
-        upgrade_tool "Claude Code" "claude" "${latest}" "claude update"
-    else
-        echo -e "${YELLOW}[⊘] Claude Code — 未安装，跳过${NC}"
-        NOT_INSTALLED=$((NOT_INSTALLED + 1))
-    fi
+    check_tool "Claude Code" "claude" "anthropics/claude-code" "@anthropic-ai/claude-code" "claude update"
 
     echo -e "${CYAN}----------------------------------------${NC}"
 
     # 4. Codex
-    if command -v codex &> /dev/null; then
-        latest=$(get_latest_version "openai/codex" "@openai/codex")
-        upgrade_tool "Codex" "codex" "${latest}" "codex update"
-    else
-        echo -e "${YELLOW}[⊘] Codex — 未安装，跳过${NC}"
-        NOT_INSTALLED=$((NOT_INSTALLED + 1))
-    fi
+    check_tool "Codex" "codex" "openai/codex" "@openai/codex" "codex update"
 
     echo -e "${CYAN}----------------------------------------${NC}"
 
     # 5. OpenCode
-    if command -v opencode &> /dev/null; then
-        latest=$(get_latest_version "anomalyco/opencode" "")
-        upgrade_tool "OpenCode" "opencode" "${latest}" "opencode upgrade"
-    else
-        echo -e "${YELLOW}[⊘] OpenCode — 未安装，跳过${NC}"
-        NOT_INSTALLED=$((NOT_INSTALLED + 1))
-    fi
+    check_tool "OpenCode" "opencode" "anomalyco/opencode" "opencode-ai" "opencode upgrade"
 
     echo -e "${CYAN}----------------------------------------${NC}"
 
     # 6. Hermes
-    if command -v hermes &> /dev/null; then
-        latest=$(get_latest_version "NousResearch/hermes-agent" "")
-        upgrade_tool "Hermes" "hermes" "${latest}" "hermes update"
-    else
-        echo -e "${YELLOW}[⊘] Hermes — 未安装，跳过${NC}"
-        NOT_INSTALLED=$((NOT_INSTALLED + 1))
-    fi
+    check_tool "Hermes" "hermes" "NousResearch/hermes-agent" "hermes-agent" "hermes update"
 
     # 7. 清理
     echo ""
