@@ -149,24 +149,57 @@ get_current_version() {
     echo "${ver}"
 }
 
-# ---------- 查询 OpenCode 最新版本 (GitHub API) ----------
-get_opencode_latest() {
+# ---------- 查询 GitHub 最新版本 (通用) ----------
+# 参数: $1 = owner/repo
+# 从 releases/latest 的 name 或 tag_name 中用正则提取版本号
+get_github_latest() {
+    local repo="$1"
     local ver
     ver=$(curl -sL --connect-timeout 10 \
-        "https://api.github.com/repositories/975734319/releases?per_page=10" 2>/dev/null \
+        "https://api.github.com/repos/${repo}/releases/latest" 2>/dev/null \
         | python3 -c "
-import sys, json
+import sys, json, re
 try:
     data = json.load(sys.stdin)
-    for r in data:
-        tag = r.get('tag_name', '')
-        if 'vscode' not in tag.lower() and tag.startswith('v'):
-            print(tag)
+    # 优先从 name 提取（适配 Codex '0.139.0'、Hermes 'Hermes Agent v0.16.0...'），
+    # 其次从 tag_name 提取（适配 Claude Code 'v2.1.177'、OpenCode 'v1.17.4'）
+    for field in ['name', 'tag_name']:
+        val = data.get(field, '')
+        m = re.search(r'(\d+\.\d+\.\d+)', val)
+        if m:
+            print(m.group(1))
             break
 except:
     pass
 " 2>/dev/null) || true
     echo "${ver}"
+}
+
+# ---------- 查询最新版本 (GitHub 优先, npm 回退) ----------
+# 参数: $1 = GitHub owner/repo, $2 = npm 包名 (可为空)
+get_latest_version() {
+    local repo="$1"
+    local npm_pkg="$2"
+    local ver
+
+    # 1. 优先 GitHub API
+    ver=$(get_github_latest "${repo}")
+    if [ -n "$ver" ]; then
+        echo "${ver}"
+        return
+    fi
+
+    # 2. GitHub 失败，尝试 npm 回退
+    if [ -n "$npm_pkg" ]; then
+        ver=$(get_npm_latest "${npm_pkg}")
+        if [ -n "$ver" ]; then
+            echo "${ver}"
+            return
+        fi
+    fi
+
+    # 3. 都失败，返回空
+    echo ""
 }
 
 # ---------- 升级单个工具 ----------
@@ -242,7 +275,7 @@ main() {
 
     # 3. Claude Code
     if command -v claude &> /dev/null; then
-        latest=$(get_npm_latest "@anthropic-ai/claude-code")
+        latest=$(get_latest_version "anthropics/claude-code" "@anthropic-ai/claude-code")
         upgrade_tool "Claude Code" "claude" "${latest}" "claude update"
     else
         echo -e "${YELLOW}[⊘] Claude Code — 未安装，跳过${NC}"
@@ -253,7 +286,7 @@ main() {
 
     # 4. Codex
     if command -v codex &> /dev/null; then
-        latest=$(get_npm_latest "@openai/codex")
+        latest=$(get_latest_version "openai/codex" "@openai/codex")
         upgrade_tool "Codex" "codex" "${latest}" "codex update"
     else
         echo -e "${YELLOW}[⊘] Codex — 未安装，跳过${NC}"
@@ -264,7 +297,7 @@ main() {
 
     # 5. OpenCode
     if command -v opencode &> /dev/null; then
-        latest=$(get_opencode_latest)
+        latest=$(get_latest_version "anomalyco/opencode" "")
         upgrade_tool "OpenCode" "opencode" "${latest}" "opencode upgrade"
     else
         echo -e "${YELLOW}[⊘] OpenCode — 未安装，跳过${NC}"
@@ -275,7 +308,8 @@ main() {
 
     # 6. Hermes
     if command -v hermes &> /dev/null; then
-        upgrade_tool "Hermes" "hermes" "" "npm install -g hermes-cli@latest"
+        latest=$(get_latest_version "NousResearch/hermes-agent" "")
+        upgrade_tool "Hermes" "hermes" "${latest}" "hermes update"
     else
         echo -e "${YELLOW}[⊘] Hermes — 未安装，跳过${NC}"
         SKIPPED=$((SKIPPED + 1))
