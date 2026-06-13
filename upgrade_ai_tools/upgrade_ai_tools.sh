@@ -137,18 +137,23 @@ version_compare() {
 # ---------- 获取 npm 包最新版本 ----------
 get_npm_latest() {
     local pkg="$1"
-    npm view "${pkg}" version 2>/dev/null
+    local ver
+    ver=$(npm view "${pkg}" version 2>/dev/null) || true
+    echo "${ver}"
 }
 
 # ---------- 获取当前版本 (通用) ----------
 get_current_version() {
     local cmd="$1"
-    $cmd --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1
+    local ver
+    ver=$($cmd --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1) || true
+    echo "${ver}"
 }
 
 # ---------- 查询 OpenCode 最新版本 (GitHub API) ----------
 get_opencode_latest() {
-    curl -sL --connect-timeout 10 \
+    local ver
+    ver=$(curl -sL --connect-timeout 10 \
         "https://api.github.com/repositories/975734319/releases?per_page=10" 2>/dev/null \
         | python3 -c "
 import sys, json
@@ -161,7 +166,8 @@ try:
             break
 except:
     pass
-" 2>/dev/null
+" 2>/dev/null) || true
+    echo "${ver}"
 }
 
 # ---------- 升级单个工具 ----------
