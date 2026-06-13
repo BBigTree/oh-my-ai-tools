@@ -4,8 +4,7 @@
 # AI 编程助手安装脚本 — 主入口
 # 自动检测平台，调用对应平台脚本
 # ============================================================
-
-set -e
+# 注意: 不使用 set -e，本脚本为交互式，每个步骤自行处理错误
 
 # ---------- 颜色定义 ----------
 GREEN='\033[0;32m'
@@ -198,7 +197,12 @@ main() {
     # shellcheck source=install_macos.sh
     source "${PLATFORM_SCRIPT}"
 
-    # 5. 逐个安装
+    # 5. 检查前置依赖
+    echo ""
+    echo -e "${CYAN}----------------------------------------${NC}"
+    "check_prerequisites_${PLATFORM}" || true
+
+    # 6. 逐个安装
     echo ""
     for tool in "${SELECTED_TOOLS[@]}"; do
         echo -e "${CYAN}----------------------------------------${NC}"
@@ -210,11 +214,11 @@ main() {
         esac
     done
 
-    # 6. 清理
+    # 7. 清理
     echo ""
     cleanup_proxy
 
-    # 7. 验证
+    # 8. 验证
     echo ""
     echo -e "${CYAN}========================================${NC}"
     echo -e "${BOLD}   安装验证${NC}"
