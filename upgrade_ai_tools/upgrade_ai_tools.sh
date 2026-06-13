@@ -23,9 +23,11 @@ SOCKS5_PROXY_URL="socks5://${PROXY_HOST}:${PROXY_PORT}"
 USE_PROXY=false
 
 # ---------- 统计 ----------
-UPGRADED=0
-SKIPPED=0
-FAILED=0
+UPGRADED=0      # 升级成功
+UP_TO_DATE=0    # 已是最新版本
+NOT_INSTALLED=0 # 未安装
+SKIPPED=0       # 跳过（无法获取版本等）
+FAILED=0        # 升级失败
 
 # ---------- 询问用户是否使用代理 ----------
 ask_proxy() {
@@ -239,7 +241,7 @@ upgrade_tool() {
 
     if [ $cmp -eq 0 ]; then
         echo -e "${GREEN}[✓] ${name} — 已是最新版本 (${current_ver})${NC}"
-        SKIPPED=$((SKIPPED + 1))
+        UP_TO_DATE=$((UP_TO_DATE + 1))
     else
         echo -e "${YELLOW}[↑] ${name} — 需要升级: ${current_ver} -> ${clean_latest}${NC}"
         if eval "${upgrade_cmd}"; then
@@ -279,7 +281,7 @@ main() {
         upgrade_tool "Claude Code" "claude" "${latest}" "claude update"
     else
         echo -e "${YELLOW}[⊘] Claude Code — 未安装，跳过${NC}"
-        SKIPPED=$((SKIPPED + 1))
+        NOT_INSTALLED=$((NOT_INSTALLED + 1))
     fi
 
     echo -e "${CYAN}----------------------------------------${NC}"
@@ -290,7 +292,7 @@ main() {
         upgrade_tool "Codex" "codex" "${latest}" "codex update"
     else
         echo -e "${YELLOW}[⊘] Codex — 未安装，跳过${NC}"
-        SKIPPED=$((SKIPPED + 1))
+        NOT_INSTALLED=$((NOT_INSTALLED + 1))
     fi
 
     echo -e "${CYAN}----------------------------------------${NC}"
@@ -301,7 +303,7 @@ main() {
         upgrade_tool "OpenCode" "opencode" "${latest}" "opencode upgrade"
     else
         echo -e "${YELLOW}[⊘] OpenCode — 未安装，跳过${NC}"
-        SKIPPED=$((SKIPPED + 1))
+        NOT_INSTALLED=$((NOT_INSTALLED + 1))
     fi
 
     echo -e "${CYAN}----------------------------------------${NC}"
@@ -312,7 +314,7 @@ main() {
         upgrade_tool "Hermes" "hermes" "${latest}" "hermes update"
     else
         echo -e "${YELLOW}[⊘] Hermes — 未安装，跳过${NC}"
-        SKIPPED=$((SKIPPED + 1))
+        NOT_INSTALLED=$((NOT_INSTALLED + 1))
     fi
 
     # 7. 清理
@@ -325,7 +327,13 @@ main() {
     echo -e "${BOLD}   升级汇总${NC}"
     echo -e "${CYAN}========================================${NC}"
     echo -e "   升级成功: ${GREEN}${UPGRADED}${NC}"
-    echo -e "   已是最新: ${GREEN}${SKIPPED}${NC}"
+    echo -e "   已是最新: ${GREEN}${UP_TO_DATE}${NC}"
+    if [ $NOT_INSTALLED -gt 0 ]; then
+        echo -e "   未安装:   ${YELLOW}${NOT_INSTALLED}${NC}"
+    fi
+    if [ $SKIPPED -gt 0 ]; then
+        echo -e "   跳过:     ${YELLOW}${SKIPPED}${NC}"
+    fi
     if [ $FAILED -gt 0 ]; then
         echo -e "   升级失败: ${RED}${FAILED}${NC}"
     fi
