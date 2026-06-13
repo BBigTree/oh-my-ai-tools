@@ -157,7 +157,7 @@ get_current_version() {
 get_github_latest() {
     local repo="$1"
     local ver
-    ver=$(curl -sL --connect-timeout 10 \
+    ver=$(curl -sL --connect-timeout 10 --max-time 30 \
         "https://api.github.com/repos/${repo}/releases/latest" 2>/dev/null \
         | python3 -c "
 import sys, json, re
