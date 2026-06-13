@@ -238,19 +238,12 @@ main() {
     fi
     echo ""
 
-    # 2. 查询远程最新版本
-    echo -e "${CYAN}[*] 正在查询最新版本...${NC}"
-    echo ""
-
-    CLAUDE_LATEST=$(get_npm_latest "@anthropic-ai/claude-code")
-    CODEX_LATEST=$(get_npm_latest "@openai/codex")
-    OPENCODE_LATEST=$(get_opencode_latest)
-
     echo -e "${CYAN}----------------------------------------${NC}"
 
     # 3. Claude Code
     if command -v claude &> /dev/null; then
-        upgrade_tool "Claude Code" "claude" "${CLAUDE_LATEST}" "claude update"
+        latest=$(get_npm_latest "@anthropic-ai/claude-code")
+        upgrade_tool "Claude Code" "claude" "${latest}" "claude update"
     else
         echo -e "${YELLOW}[⊘] Claude Code — 未安装，跳过${NC}"
         SKIPPED=$((SKIPPED + 1))
@@ -260,7 +253,8 @@ main() {
 
     # 4. Codex
     if command -v codex &> /dev/null; then
-        upgrade_tool "Codex" "codex" "${CODEX_LATEST}" "codex update"
+        latest=$(get_npm_latest "@openai/codex")
+        upgrade_tool "Codex" "codex" "${latest}" "codex update"
     else
         echo -e "${YELLOW}[⊘] Codex — 未安装，跳过${NC}"
         SKIPPED=$((SKIPPED + 1))
@@ -270,7 +264,8 @@ main() {
 
     # 5. OpenCode
     if command -v opencode &> /dev/null; then
-        upgrade_tool "OpenCode" "opencode" "${OPENCODE_LATEST}" "opencode upgrade"
+        latest=$(get_opencode_latest)
+        upgrade_tool "OpenCode" "opencode" "${latest}" "opencode upgrade"
     else
         echo -e "${YELLOW}[⊘] OpenCode — 未安装，跳过${NC}"
         SKIPPED=$((SKIPPED + 1))
